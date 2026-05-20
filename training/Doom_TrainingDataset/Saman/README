@@ -1,0 +1,30 @@
+
+This dataset contains gameplay training data collected from a full playthrough of Episode 1, Maps 1–6, with all levels completed successfully.
+
+
+### Gameplay Style
+
+The game was played carefully and vigilantly to help the model learn:
+
+- How to move through maps efficiently
+- How to explore corners and hidden areas
+- How to return from dead ends and navigate back correctly
+- How to search for exits and progression paths
+- How to survive while exploring
+- Combat behavior against monsters encountered during exploration
+- Map completion behavior
+
+
+The player intentionally explored different sections of the maps thoroughly so the model can better understand where important locations, exits, and pathways are usually found.
+
+### Dataset Contents
+
+Current dataset includes:
+
+Episode 1; Maps 1-6
+Fully completed levels
+Combat interactions using bullets and shells
+Exploration and navigation data
+Exit-search behavior
+User: user1 (Saman Fatima)
+
