@@ -73,8 +73,10 @@
 #include "g_game.h"
 #include "neuralnet/nn_player.h"
 #include "neuralnet/nn_logger.h"
+#include "neuralnet/nn_scripted.h"
 
 static boolean nn_bot_active = false;
+static boolean scripted_bot_active = false;
 
 
 #define SAVEGAMESIZE	0x2c000
@@ -336,6 +338,12 @@ void G_BuildTiccmd (ticcmd_t* cmd, int maketic)
     if (nn_bot_active)
     {
         NN_PlayerBuildTicCmd(&players[consoleplayer], cmd);
+        return;
+    }
+
+    if (scripted_bot_active)
+    {
+        NN_ScriptedBuildTicCmd(&players[consoleplayer], cmd);
         return;
     }
 
@@ -681,6 +689,7 @@ void G_DoLoadLevel (void)
     }
 
     int p = M_CheckParm("-nnbot");
+    int sp = M_CheckParm("-scriptedbot");
     if (p)
     {
         if (NN_PlayerInit())
@@ -688,11 +697,19 @@ void G_DoLoadLevel (void)
             nn_bot_active = true;
         }
     }
+    else if (sp)
+    {
+        if (NN_ScriptedInit())
+        {
+            scripted_bot_active = true;
+        }
+        NN_InitLogger();
+    }
     else
     {
 		NN_InitLogger();
     }
-} 
+}
 
 static void SetJoyButtons(unsigned int buttons_mask)
 {

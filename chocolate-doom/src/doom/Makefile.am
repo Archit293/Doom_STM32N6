@@ -64,6 +64,7 @@ neuralnet/nn_logger.c neuralnet/nn_logger.h \
 neuralnet/nn_infer.c  neuralnet/nn_infer.h  \
 neuralnet/nn_common.c neuralnet/nn_common.h \
 neuralnet/nn_player.c neuralnet/nn_player.h \
+neuralnet/nn_scripted.c neuralnet/nn_scripted.h \
 neuralnet/nn_weights.h
 
 FEATURE_DEHACKED_SOURCE_FILES =            \
