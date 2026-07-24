@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 #include "nn_scripted.h"
 #include "nn_common.h"
@@ -24,6 +25,15 @@ static const int turn_map[5] = { -512, -192, 0, 192, 512 };
 #define AIM_CONE_RATIO       0.6f
 #define CLEAR_RAY_DIST     200.0f
 #define USE_TRIGGER_DIST    80.0f
+#define COMBAT_APPROACH_DIST 250.0f  // hold ground once this close to an engaged monster
+#define NAV_BACKOFF_DIST     60.0f   // back off instead of walking forward when this blocked
+
+// Stuck-recovery timing/thresholds (all in tics unless noted; 35 tics = 1s)
+#define STUCK_MOVE_THRESHOLD (5 * FRACUNIT)  // net movement below this counts as "not moving"
+#define STUCK_DETECT_TICS       35
+#define RECOVERY_NORMAL_TICS    70
+#define RECOVERY_ESCALATE_TICS 140
+#define RECOVERY_SUCCESS_DIST   40.0f  // net displacement above this counts as "actually escaped"
 
 // --- Spatial memory: bias navigation away from well-visited ground ---
 // Coarse grid over the map, counting how often each cell has been stood in.
@@ -36,6 +46,9 @@ static const int turn_map[5] = { -512, -192, 0, 192, 512 };
 #define VISIT_EXHAUST_LIMIT 4
 #define VISIT_PENALTY      0.35f
 
+// 256*256 bytes = 64KB. Fine here: this file only ever compiles into the
+// desktop/WSL chocolate-doom build (for -scriptedbot data collection), never
+// into the embedded STM32N6 target, which only runs the trained network.
 static unsigned char visit_grid[VISIT_GRID_SIZE][VISIT_GRID_SIZE];
 
 static void visit_cell_index(fixed_t x, fixed_t y, int *cx, int *cy)
@@ -72,6 +85,7 @@ static boolean scripted_active = false;
 boolean NN_ScriptedInit(void)
 {
     scripted_active = true;
+    srand((unsigned int)time(NULL));
     fprintf(stderr, "NN_Scripted: initialized (rule-based, no trained model)\n");
     return true;
 }
@@ -169,7 +183,7 @@ void NN_ScriptedBuildTicCmd(player_t *player, ticcmd_t *cmd)
             if (fabsf(m_dy) < AIM_CONE_RATIO * m_dx)
                 fire = 1;
 
-            fwd_class = (dist > 250.0f) ? 2 : 1;
+            fwd_class = (dist > COMBAT_APPROACH_DIST) ? 2 : 1;
         }
     }
 
@@ -198,7 +212,7 @@ void NN_ScriptedBuildTicCmd(player_t *player, ticcmd_t *cmd)
 
             // Blocked ahead and the opening is behind-ish: back off while
             // turning instead of walking into the wall.
-            if (ray0 < 60.0f && nav_turn_class != 2)
+            if (ray0 < NAV_BACKOFF_DIST && nav_turn_class != 2)
                 fwd_class = 0;
         }
         else
@@ -235,12 +249,12 @@ void NN_ScriptedBuildTicCmd(player_t *player, ticcmd_t *cmd)
 
         visit_mark(player->mo->x, player->mo->y);
 
-        if (abs(dx_pos) < 5 * FRACUNIT && abs(dy_pos) < 5 * FRACUNIT)
+        if (abs(dx_pos) < STUCK_MOVE_THRESHOLD && abs(dy_pos) < STUCK_MOVE_THRESHOLD)
             stuck_count++;
         else if (recovery_timer <= 0)
             stuck_count = 0;
 
-        if (stuck_count > 35 && recovery_timer <= 0)
+        if (stuck_count > STUCK_DETECT_TICS && recovery_timer <= 0)
         {
             recovery_start_x = player->mo->x;
             recovery_start_y = player->mo->y;
@@ -248,14 +262,14 @@ void NN_ScriptedBuildTicCmd(player_t *player, ticcmd_t *cmd)
             if (escalation_count >= 2)
             {
                 escalating = true;
-                recovery_timer = 140;
+                recovery_timer = RECOVERY_ESCALATE_TICS;
                 recovery_turn_class = rand() % 5;
                 recovery_side_class = rand() % 3;
             }
             else
             {
                 escalating = false;
-                recovery_timer = 70;
+                recovery_timer = RECOVERY_NORMAL_TICS;
 
                 // Pick the escape direction ONCE per recovery attempt (not
                 // every tic) so it can actually be carried out.
@@ -280,7 +294,7 @@ void NN_ScriptedBuildTicCmd(player_t *player, ticcmd_t *cmd)
             }
             else
             {
-                fwd_class = (recovery_timer > 35) ? 1 : 2;
+                fwd_class = (recovery_timer > RECOVERY_NORMAL_TICS / 2) ? 1 : 2;
             }
 
             if (recovery_timer == 0)
@@ -291,7 +305,7 @@ void NN_ScriptedBuildTicCmd(player_t *player, ticcmd_t *cmd)
                 float mdy = (float)moved_dy / (float)FRACUNIT;
                 float moved = sqrtf(mdx * mdx + mdy * mdy);
 
-                escalation_count = (moved < 40.0f) ? escalation_count + 1 : 0;
+                escalation_count = (moved < RECOVERY_SUCCESS_DIST) ? escalation_count + 1 : 0;
 
                 stuck_count = 0;
                 escalating = false;
